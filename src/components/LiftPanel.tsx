@@ -1,6 +1,8 @@
-import { lifts } from '../data/lifts';
+import { useLifts } from '../store/useSkiResortStore';
 
 export function LiftPanel() {
+  const lifts = useLifts();
+
   return (
     <div className="lift-panel">
       <h3>索道列表</h3>

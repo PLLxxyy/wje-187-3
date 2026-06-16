@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { lifts } from '../data/lifts';
+import { useLifts } from '../store/useSkiResortStore';
 
 function noise2D(x: number, y: number): number {
   const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
@@ -45,8 +46,46 @@ const liftPositions: LiftDef[] = [
   { bottom: [15, 7], top: [13, -14], color: '#e74c3c' },
 ];
 
+const GONDOLA_COUNT = 5;
+
+function Gondola({ curve, color, isRunning, offset }: { curve: THREE.CatmullRomCurve3; color: string; isRunning: boolean; offset: number }) {
+  const groupRef = useRef<THREE.Group>(null);
+  const progressRef = useRef(offset);
+
+  useFrame((_, delta) => {
+    if (isRunning && groupRef.current) {
+      progressRef.current = (progressRef.current + delta * 0.03) % 1;
+      const point = curve.getPoint(progressRef.current);
+      groupRef.current.position.copy(point);
+      const nextPoint = curve.getPoint((progressRef.current + 0.01) % 1);
+      groupRef.current.lookAt(nextPoint);
+    }
+  });
+
+  const gondolaColor = isRunning ? color : '#555555';
+
+  return (
+    <group ref={groupRef}>
+      <mesh position={[0, -0.15, 0]}>
+        <cylinderGeometry args={[0.02, 0.02, 0.2, 6]} />
+        <meshStandardMaterial color="#888888" />
+      </mesh>
+      <mesh position={[0, -0.35, 0]}>
+        <boxGeometry args={[0.4, 0.35, 0.3]} />
+        <meshStandardMaterial color={gondolaColor} emissive={isRunning ? gondolaColor : '#000'} emissiveIntensity={isRunning ? 0.2 : 0} />
+      </mesh>
+      <mesh position={[0, -0.35, 0]}>
+        <boxGeometry args={[0.35, 0.25, 0.25]} />
+        <meshStandardMaterial color="#88ccff" transparent opacity={0.6} />
+      </mesh>
+    </group>
+  );
+}
+
 export function LiftLines() {
-  const lines = useMemo(() => {
+  const lifts = useLifts();
+
+  const lineData = useMemo(() => {
     return liftPositions.map((ld, idx) => {
       const bx = ld.bottom[0];
       const bz = ld.bottom[1];
@@ -55,35 +94,31 @@ export function LiftLines() {
       const by = mountainHeight(bx, bz) + 0.5;
       const ty = mountainHeight(tx, tz) + 0.5;
 
-      // Catenary curve for cable sag
-      const mid = [(bx + tx) / 2, Math.max(by, ty) + 1.5, (bz + tz) / 2];
       const points = [];
       const steps = 30;
       for (let i = 0; i <= steps; i++) {
         const t = i / steps;
         const x = bx + (tx - bx) * t;
         const z = bz + (tz - bz) * t;
-        // Sag parabola
         const sag = -3 * t * (1 - t);
         const y = by + (ty - by) * t + sag + Math.max(by, ty) + 1.5 - Math.max(by, ty);
         points.push(new THREE.Vector3(x, y, z));
       }
 
-      return { points, color: ld.color, idx, lift: lifts[idx] };
+      const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.3);
+      return { curve, color: ld.color, idx, lift: lifts[idx] };
     });
-  }, []);
+  }, [lifts]);
 
   return (
     <group>
-      {lines.map((line) => {
-        const curve = new THREE.CatmullRomCurve3(line.points, false, 'catmullrom', 0.3);
-        const tubeGeo = new THREE.TubeGeometry(curve, 40, 0.04, 6, false);
+      {lineData.map((line) => {
         const isRunning = line.lift?.status === 'running';
         const color = isRunning ? line.color : '#555555';
+        const tubeGeo = new THREE.TubeGeometry(line.curve, 40, 0.04, 6, false);
 
         return (
           <group key={line.idx}>
-            {/* Cable */}
             <mesh geometry={tubeGeo}>
               <meshStandardMaterial
                 color={color}
@@ -92,9 +127,8 @@ export function LiftLines() {
               />
             </mesh>
 
-            {/* Tower pylons */}
             {[0.25, 0.5, 0.75].map((t, pi) => {
-              const pt = curve.getPoint(t);
+              const pt = line.curve.getPoint(t);
               return (
                 <group key={pi} position={[pt.x, 0, pt.z]}>
                   <mesh position={[0, pt.y / 2, 0]}>
@@ -109,15 +143,24 @@ export function LiftLines() {
               );
             })}
 
-            {/* Station markers */}
-            <mesh position={[line.points[0].x, line.points[0].y, line.points[0].z]}>
+            <mesh position={[line.curve.points[0].x, line.curve.points[0].y, line.curve.points[0].z]}>
               <boxGeometry args={[0.4, 0.3, 0.4]} />
               <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.2} />
             </mesh>
-            <mesh position={[line.points[line.points.length - 1].x, line.points[line.points.length - 1].y, line.points[line.points.length - 1].z]}>
+            <mesh position={[line.curve.points[line.curve.points.length - 1].x, line.curve.points[line.curve.points.length - 1].y, line.curve.points[line.curve.points.length - 1].z]}>
               <boxGeometry args={[0.4, 0.3, 0.4]} />
               <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.2} />
             </mesh>
+
+            {Array.from({ length: GONDOLA_COUNT }).map((_, i) => (
+              <Gondola
+                key={i}
+                curve={line.curve}
+                color={line.color}
+                isRunning={isRunning}
+                offset={i / GONDOLA_COUNT}
+              />
+            ))}
           </group>
         );
       })}

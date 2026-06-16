@@ -14,8 +14,9 @@ import { TrailInfoCard } from './components/TrailInfoCard';
 import { BottomBar } from './components/BottomBar';
 import { FPVController } from './components/FPVController';
 import { trails, Trail } from './data/trails';
+import { SkiResortProvider } from './store/useSkiResortStore';
 
-export default function App() {
+function AppContent() {
   const [selectedTrail, setSelectedTrail] = useState<Trail | null>(null);
   const [highlightedTrail, setHighlightedTrail] = useState<string | null>(null);
   const [fpvActive, setFpvActive] = useState(false);
@@ -171,5 +172,13 @@ export default function App() {
         </div>
       )}
     </>
+  );
+}
+
+export default function App() {
+  return (
+    <SkiResortProvider>
+      <AppContent />
+    </SkiResortProvider>
   );
 }

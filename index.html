@@ -54,6 +54,29 @@
         font-weight: 600;
         color: #e0f0ff;
       }
+      .weather-item .value.wind-high {
+        color: #e74c3c;
+        animation: pulse 1s infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+      }
+      .wind-warning {
+        margin-top: 8px;
+        padding: 8px 12px;
+        background: rgba(231, 76, 60, 0.15);
+        border: 1px solid rgba(231, 76, 60, 0.4);
+        border-radius: 6px;
+        color: #e74c3c;
+        font-size: 12px;
+        font-weight: 500;
+        animation: slideIn 0.3s ease-out;
+      }
+      @keyframes slideIn {
+        from { opacity: 0; transform: translateY(-5px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
       .lift-panel {
         position: absolute;
         top: 16px;

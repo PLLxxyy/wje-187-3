@@ -1,26 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useWeather, WIND_SPEED_THRESHOLD } from '../store/useSkiResortStore';
 
 export function WeatherPanel() {
-  const [weather, setWeather] = useState({
-    temperature: -8,
-    windSpeed: 12,
-    snowfall: 3.5,
-    visibility: '良好',
-    humidity: 78,
-  });
-
-  // Simulate slight weather changes
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setWeather(prev => ({
-        ...prev,
-        temperature: prev.temperature + (Math.random() - 0.5) * 0.5,
-        windSpeed: Math.max(0, prev.windSpeed + (Math.random() - 0.5) * 2),
-        snowfall: Math.max(0, prev.snowfall + (Math.random() - 0.5) * 0.3),
-      }));
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  const weather = useWeather();
+  const isHighWind = weather.windSpeed >= WIND_SPEED_THRESHOLD;
 
   return (
     <div className="weather-panel">
@@ -29,10 +11,17 @@ export function WeatherPanel() {
         <span className="label">温度</span>
         <span className="value">{weather.temperature.toFixed(1)}°C</span>
       </div>
-      <div className="weather-item">
+      <div className="weather-item wind-item">
         <span className="label">风速</span>
-        <span className="value">{weather.windSpeed.toFixed(1)} km/h</span>
+        <span className={`value ${isHighWind ? 'wind-high' : ''}`}>
+          {weather.windSpeed.toFixed(1)} km/h
+        </span>
       </div>
+      {isHighWind && (
+        <div className="wind-warning">
+          ⚠️ 风速超过 {WIND_SPEED_THRESHOLD} km/h，山顶索道已自动停运
+        </div>
+      )}
       <div className="weather-item">
         <span className="label">降雪量</span>
         <span className="value">{weather.snowfall.toFixed(1)} mm/h</span>

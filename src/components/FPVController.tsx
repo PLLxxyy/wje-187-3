@@ -16,7 +16,7 @@ export function FPVController({ trail, progress, onProgressUpdate }: FPVControll
   const speed = 0.0008; // Controls animation speed
 
   // Build spline from trail points
-  const curve = useRef<THREE.CatmullRomCurve3>(null);
+  const curve = useRef<THREE.CatmullRomCurve3 | null>(null);
   useEffect(() => {
     const vecs = trail.points.map(p => new THREE.Vector3(p.x, p.y + 0.8, p.z));
     curve.current = new THREE.CatmullRomCurve3(vecs, false, 'catmullrom', 0.5);
