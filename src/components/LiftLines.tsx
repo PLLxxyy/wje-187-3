@@ -1,7 +1,8 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useLifts } from '../store/useSkiResortStore';
+import { Lift } from '../data/lifts';
 
 function noise2D(x: number, y: number): number {
   const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
@@ -48,21 +49,60 @@ const liftPositions: LiftDef[] = [
 
 const GONDOLA_COUNT = 5;
 
-function Gondola({ curve, color, isRunning, offset }: { curve: THREE.CatmullRomCurve3; color: string; isRunning: boolean; offset: number }) {
+type LiftStatus = Lift['status'];
+
+function getStatusColors(status: LiftStatus, baseColor: string) {
+  switch (status) {
+    case 'running':
+      return { cable: baseColor, gondola: baseColor, emissive: baseColor, emissiveIntensity: 0.3 };
+    case 'maintenance':
+      return { cable: '#f1c40f', gondola: '#f1c40f', emissive: '#f1c40f', emissiveIntensity: 0.2 };
+    case 'stopped':
+      return { cable: '#555555', gondola: '#555555', emissive: '#000000', emissiveIntensity: 0 };
+    default:
+      return { cable: '#555555', gondola: '#555555', emissive: '#000000', emissiveIntensity: 0 };
+  }
+}
+
+function Gondola({
+  curve,
+  baseColor,
+  status,
+  offset,
+}: {
+  curve: THREE.CatmullRomCurve3;
+  baseColor: string;
+  status: LiftStatus;
+  offset: number;
+}) {
   const groupRef = useRef<THREE.Group>(null);
   const progressRef = useRef(offset);
+  const positionedRef = useRef(false);
+  const isRunning = status === 'running';
+  const colors = getStatusColors(status, baseColor);
 
-  useFrame((_, delta) => {
-    if (isRunning && groupRef.current) {
-      progressRef.current = (progressRef.current + delta * 0.03) % 1;
+  useEffect(() => {
+    if (groupRef.current && !positionedRef.current) {
       const point = curve.getPoint(progressRef.current);
       groupRef.current.position.copy(point);
       const nextPoint = curve.getPoint((progressRef.current + 0.01) % 1);
       groupRef.current.lookAt(nextPoint);
+      positionedRef.current = true;
     }
-  });
+  }, [curve]);
 
-  const gondolaColor = isRunning ? color : '#555555';
+  useFrame((_, delta) => {
+    if (!groupRef.current) return;
+
+    if (isRunning) {
+      progressRef.current = (progressRef.current + delta * 0.03) % 1;
+    }
+
+    const point = curve.getPoint(progressRef.current);
+    groupRef.current.position.copy(point);
+    const nextPoint = curve.getPoint((progressRef.current + 0.01) % 1);
+    groupRef.current.lookAt(nextPoint);
+  });
 
   return (
     <group ref={groupRef}>
@@ -72,11 +112,19 @@ function Gondola({ curve, color, isRunning, offset }: { curve: THREE.CatmullRomC
       </mesh>
       <mesh position={[0, -0.35, 0]}>
         <boxGeometry args={[0.4, 0.35, 0.3]} />
-        <meshStandardMaterial color={gondolaColor} emissive={isRunning ? gondolaColor : '#000'} emissiveIntensity={isRunning ? 0.2 : 0} />
+        <meshStandardMaterial
+          color={colors.gondola}
+          emissive={colors.emissive}
+          emissiveIntensity={status === 'running' ? 0.2 : 0}
+        />
       </mesh>
       <mesh position={[0, -0.35, 0]}>
         <boxGeometry args={[0.35, 0.25, 0.25]} />
-        <meshStandardMaterial color="#88ccff" transparent opacity={0.6} />
+        <meshStandardMaterial
+          color={status === 'stopped' ? '#667788' : '#88ccff'}
+          transparent
+          opacity={status === 'stopped' ? 0.4 : 0.6}
+        />
       </mesh>
     </group>
   );
@@ -85,8 +133,8 @@ function Gondola({ curve, color, isRunning, offset }: { curve: THREE.CatmullRomC
 export function LiftLines() {
   const lifts = useLifts();
 
-  const lineData = useMemo(() => {
-    return liftPositions.map((ld, idx) => {
+  const curves = useMemo(() => {
+    return liftPositions.map((ld) => {
       const bx = ld.bottom[0];
       const bz = ld.bottom[1];
       const tx = ld.top[0];
@@ -94,7 +142,7 @@ export function LiftLines() {
       const by = mountainHeight(bx, bz) + 0.5;
       const ty = mountainHeight(tx, tz) + 0.5;
 
-      const points = [];
+      const points: THREE.Vector3[] = [];
       const steps = 30;
       for (let i = 0; i <= steps; i++) {
         const t = i / steps;
@@ -105,30 +153,33 @@ export function LiftLines() {
         points.push(new THREE.Vector3(x, y, z));
       }
 
-      const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.3);
-      return { curve, color: ld.color, idx, lift: lifts[idx] };
+      return {
+        curve: new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.3),
+        baseColor: ld.color,
+      };
     });
-  }, [lifts]);
+  }, []);
 
   return (
     <group>
-      {lineData.map((line) => {
-        const isRunning = line.lift?.status === 'running';
-        const color = isRunning ? line.color : '#555555';
-        const tubeGeo = new THREE.TubeGeometry(line.curve, 40, 0.04, 6, false);
+      {curves.map(({ curve, baseColor }, idx) => {
+        const lift = lifts[idx];
+        const status = lift?.status ?? 'stopped';
+        const colors = getStatusColors(status, baseColor);
+        const tubeGeo = new THREE.TubeGeometry(curve, 40, 0.04, 6, false);
 
         return (
-          <group key={line.idx}>
+          <group key={idx}>
             <mesh geometry={tubeGeo}>
               <meshStandardMaterial
-                color={color}
-                emissive={isRunning ? color : '#000'}
-                emissiveIntensity={isRunning ? 0.3 : 0}
+                color={colors.cable}
+                emissive={colors.emissive}
+                emissiveIntensity={colors.emissiveIntensity}
               />
             </mesh>
 
             {[0.25, 0.5, 0.75].map((t, pi) => {
-              const pt = line.curve.getPoint(t);
+              const pt = curve.getPoint(t);
               return (
                 <group key={pi} position={[pt.x, 0, pt.z]}>
                   <mesh position={[0, pt.y / 2, 0]}>
@@ -143,21 +194,35 @@ export function LiftLines() {
               );
             })}
 
-            <mesh position={[line.curve.points[0].x, line.curve.points[0].y, line.curve.points[0].z]}>
+            <mesh position={[curve.points[0].x, curve.points[0].y, curve.points[0].z]}>
               <boxGeometry args={[0.4, 0.3, 0.4]} />
-              <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.2} />
+              <meshStandardMaterial
+                color={colors.cable}
+                emissive={colors.emissive}
+                emissiveIntensity={0.2}
+              />
             </mesh>
-            <mesh position={[line.curve.points[line.curve.points.length - 1].x, line.curve.points[line.curve.points.length - 1].y, line.curve.points[line.curve.points.length - 1].z]}>
+            <mesh
+              position={[
+                curve.points[curve.points.length - 1].x,
+                curve.points[curve.points.length - 1].y,
+                curve.points[curve.points.length - 1].z,
+              ]}
+            >
               <boxGeometry args={[0.4, 0.3, 0.4]} />
-              <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.2} />
+              <meshStandardMaterial
+                color={colors.cable}
+                emissive={colors.emissive}
+                emissiveIntensity={0.2}
+              />
             </mesh>
 
             {Array.from({ length: GONDOLA_COUNT }).map((_, i) => (
               <Gondola
                 key={i}
-                curve={line.curve}
-                color={line.color}
-                isRunning={isRunning}
+                curve={curve}
+                baseColor={baseColor}
+                status={status}
                 offset={i / GONDOLA_COUNT}
               />
             ))}
